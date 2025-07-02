@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 from datetime import datetime
+from scipy import stats
 
 plt.rcParams['font.sans-serif'] = ['SimHei']
 
@@ -92,7 +93,7 @@ try:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
     df['Avg Price'] = (df['Low Price'] + df['High Price']) / 2
-    price_mask = (df['Low Price'] > 0) & (df['High Price'] > df['Low Price'])
+    price_mask = (df['Low Price'] > 0) & (df['High Price'] >= df['Low Price'])
 
     if price_mask.sum() > 0:
         df = df[price_mask]
@@ -104,43 +105,123 @@ except Exception as e:
     print(f"价格处理失败: {e}")
     df['Avg Price'] = np.random.normal(30, 10, len(df))
 
-# 包装单位处理
-try:
-    bushel_patterns = ['bushel', 'bush', 'bu.', 'bu ', 'bushl']
-    regex_pattern = '|'.join(bushel_patterns)
-    package_mask = df['Package'].str.contains(regex_pattern, case=False, na=False)
+# === 改进的包装单位处理 ===
+print("\n" + "=" * 40)
+print("改进的包装单位处理")
+print("=" * 40)
 
-    if package_mask.sum() > 0:
-        df = df[package_mask]
-        print(f"包装过滤完成 | 保留记录: {len(df)}")
+
+def standardize_package(package_str):
+    """将各种包装描述统一转换为标准格式"""
+    package_lower = str(package_str).lower().strip()
+
+    # 直接创建映射字典（基于实际数据内容）
+    mapping = {
+        # 箱子类（inch bins）
+        '36 inch bins': '36 inch bins',
+        '24 inch bins': '24 inch bins',
+        'bins': '24 inch bins',  # 无尺寸时默认24英寸
+
+        # 巴士耳规格
+        '1/2 bushel cartons': '0.5 bu cartons',
+        '1 1/9 bushel cartons': '1.111 bu cartons',
+        'bushel cartons': '1.0 bu cartons',
+        'bushel baskets': '1.0 bu baskets',
+        '1 1/9 bushel crates': '1.111 bu crates',
+
+        # 重量规格
+        '35 lb cartons': '35 lb cartons',
+        '40 lb cartons': '40 lb cartons',
+        '50 lb sacks': '50 lb sacks',
+        '50 lb cartons': '50 lb cartons',
+        '22 lb cartons': '22 lb cartons',
+        '20 lb cartons': '20 lb cartons',
+
+        # 特殊类型
+        'each': 'each'
+    }
+
+    # 查找最接近的匹配（允许部分匹配）
+    for key, value in mapping.items():
+        if key in package_lower:
+            return value
+
+    # 没有匹配时，基于类型进行智能猜测
+    if "inch" in package_lower and "bin" in package_lower:
+        # 提取尺寸数字
+        size_match = re.search(r'(\d+)\s*inch', package_lower)
+        if size_match:
+            size = int(size_match.group(1))
+            return f"{size} inch bins"
+
+    elif "bushel" in package_lower:
+        # 提取蒲式耳值
+        bu_match = re.search(r'(\d+[\.\d+]*)\s*bushel', package_lower)
+        if bu_match:
+            return f"{bu_match.group(1)} bu cartons"
+        else:
+            return "1.0 bu cartons"
+
+    elif "carton" in package_lower or "sack" in package_lower:
+        # 提取重量值
+        lb_match = re.search(r'(\d+)\s*lb', package_lower)
+        if lb_match:
+            return f"{lb_match.group(1)} lb cartons"
+
+    # 默认处理
+    return "unknown"
+
+
+def calculate_bushel_equivalent(standard_package):
+    """根据标准化包装名称计算蒲式耳当量"""
+    if "inch bins" in standard_package:
+        # 提取尺寸数字
+        size = float(standard_package.split()[0])
+        # 24英寸箱子≈1蒲式耳
+        return size / 24
+
+    elif "bu" in standard_package:
+        # 提取蒲式耳值
+        bu_value = float(standard_package.split()[0])
+        return bu_value
+
+    elif "lb" in standard_package:
+        # 提取磅值
+        lb_value = float(standard_package.split()[0])
+        # 45磅 = 1蒲式耳
+        return lb_value / 45
+
+    elif "each" in standard_package:
+        # 单个南瓜，平均估计
+        return 0.25  # 约11磅 (45/4=11.25磅)
+
     else:
-        print("警告: 无匹配包装单位，跳过过滤")
+        # 未知类型，使用中位数
+        return 1.0  # 默认1蒲式耳
 
 
-    def parse_fraction(s):
-        if pd.isna(s) or not str(s).strip():
-            return np.nan
-        try:
-            s = str(s).strip()
-            if ' ' in s:
-                parts = s.split()
-                if '/' in parts[1]:
-                    return float(parts[0]) + float(parts[1].split('/')[0]) / float(parts[1].split('/')[1])
-                return float(s.replace(' ', ''))
-            elif '/' in s:
-                num, denom = map(float, s.split('/'))
-                return num / denom if denom != 0 else np.nan
-            return float(s)
-        except:
-            return np.nan
+# 应用包装标准化
+try:
+    # 1. 标准化包装名称
+    df['Standard_Package'] = df['Package'].apply(standardize_package)
 
+    # 2. 计算蒲式耳当量
+    df['Bushel_Equivalent'] = df['Standard_Package'].apply(calculate_bushel_equivalent)
 
-    df['Bushel Value'] = df['Package'].str.extract(r'(\d+\s?\d*/\d+|\d+\.\d+|\d+)', expand=False).apply(parse_fraction)
-    if df['Bushel Value'].isna().sum() > len(df) / 2:
-        df['Bushel Value'] = df['Bushel Value'].fillna(1.0)
+    # 3. 计算标准化价格（每蒲式耳价格）
+    df['Std_Price'] = df['Avg Price'] / df['Bushel_Equivalent']
+
+    # 记录转换统计
+    print("\n包装标准化结果:")
+    print(df['Standard_Package'].value_counts())
+    print("\n蒲式耳当量分布:")
+    print(df['Bushel_Equivalent'].describe()[['mean', 'std', 'min', 'max']])
 
 except Exception as e:
     print(f"包装处理失败: {e}")
+    df['Standard_Package'] = "unknown"
+    df['Bushel_Equivalent'] = 1.0
+    df['Std_Price'] = df['Avg Price']
 
 # 分类变量处理
 size_mapping = {'small': 'S', 'sm': 'S', 'sml': 'S', 'med': 'M', 'medium': 'M',
@@ -189,13 +270,13 @@ print("=" * 40)
 print(f"数据集维度: {df.shape}")
 print(f"时间范围: {df.get('Date', 'N/A')}")
 
-num_cols = ['Avg Price', 'Low Price', 'High Price', 'Bushel Value', 'Month']
+num_cols = ['Avg Price', 'Low Price', 'High Price', 'Bushel_Equivalent', 'Month', 'Std_Price']
 num_summary = df[df.columns.intersection(num_cols)].describe().loc[['mean', 'std']]
 if not num_summary.empty:
     print("\n数值特征摘要:")
     print(num_summary)
 
-cat_cols = ['Item Size', 'City', 'Origin Group', 'Season', 'Package Type']
+cat_cols = ['Item Size', 'City', 'Origin Group', 'Season', 'Standard_Package']
 for col in cat_cols:
     if col in df:
         print(f"\n{col}分布:")
@@ -206,69 +287,44 @@ print("\n" + "=" * 40)
 print("数据可视化分析")
 print("=" * 40)
 
-# 价格趋势图
+# 价格趋势图（使用标准化价格）
 plt.figure(figsize=(12, 6))
-sns.lineplot(data=df, x='Month', y='Avg Price', ci='sd', marker='o', color='darkorange')
+sns.lineplot(data=df, x='Month', y='Std_Price', ci='sd', marker='o', color='darkorange')
 plt.xticks(range(1, 13), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
-plt.title('南瓜月度平均价格趋势', fontsize=14)
+plt.title('南瓜月度标准化价格趋势(每蒲式耳)', fontsize=14)
 plt.grid(alpha=0.3)
-plt.savefig('price_trend.png', dpi=300)
+plt.savefig('std_price_trend.png', dpi=300)
 plt.close()
 
 # 包装与价格关系
-if 'Bushel Value' in df:
-    plt.figure(figsize=(10, 6))
-    sns.scatterplot(data=df, x='Bushel Value', y='Avg Price', hue='Item Size', palette='viridis', alpha=0.7)
-    plt.title('包装大小与价格关系')
-    plt.savefig('bushel_price.png', dpi=300)
-    plt.close()
+plt.figure(figsize=(10, 6))
+sns.scatterplot(data=df, x='Bushel_Equivalent', y='Std_Price', hue='Item Size', palette='viridis', alpha=0.7)
+plt.title('包装大小与标准化价格关系')
+plt.savefig('bushel_std_price.png', dpi=300)
+plt.close()
 
-# 5.3 交互式3D图表（修复版）
+# 交互式3D图表
 try:
-    # 确保 size 参数有效
-    size_col = 'Bushel Value' if 'Bushel Value' in df else None
-    if size_col is not None and df[size_col].isna().any():
-        # 用中位数填充缺失值
-        median_size = df[size_col].median()
-        df[size_col] = df[size_col].fillna(median_size)
-        print(f"已用中位数({median_size:.2f})填充Bushel Value缺失值")
-
     fig = px.scatter_3d(
         df,
         x='Month',
         y='Origin Group' if 'Origin Group' in df else 'Item Size',
-        z='Avg Price',
+        z='Std_Price',
         color='Item Size' if 'Item Size' in df else 'Season',
-        size=size_col,
+        size='Bushel_Equivalent',
         hover_data=['City Name'] if 'City Name' in df else None,
-        title="南瓜数据多维分析"
+        title="南瓜数据多维分析(标准化价格)"
     )
     fig.update_layout(scene=dict(
         xaxis_title='月份',
         yaxis_title='产地' if 'Origin Group' in df else '大小',
-        zaxis_title='平均价格(USD)'
+        zaxis_title='标准化价格(USD/蒲式耳)'
     ))
-    fig.write_html('3d_interactive_plot.html')
-    print("已保存交互式3D图：3d_interactive_plot.html")
+    fig.write_html('3d_interactive_std_price.html')
+    print("已保存交互式3D图：3d_interactive_std_price.html")
 
 except Exception as e:
     print(f"交互式图表失败: {e}")
-    # 备选方案：不使用size参数
-    try:
-        print("尝试不带size参数的3D图表...")
-        fig = px.scatter_3d(
-            df,
-            x='Month',
-            y='Origin Group' if 'Origin Group' in df else 'Item Size',
-            z='Avg Price',
-            color='Item Size' if 'Item Size' in df else 'Season',
-            hover_data=['City Name'] if 'City Name' in df else None,
-            title="南瓜数据多维分析(无尺寸)"
-        )
-        fig.write_html('3d_interactive_plot_no_size.html')
-        print("已保存备选3D图：3d_interactive_plot_no_size.html")
-    except Exception as e2:
-        print(f"备选方案也失败: {e2}")
 
 # 相关性热力图
 print("\n正在生成相关性热力图...")
@@ -304,6 +360,6 @@ except Exception as e:
 
 print("\n" + "=" * 40)
 print("分析完成！输出文件:")
-print("静态图表: price_trend.png, bushel_price.png, correlation_heatmap.png")
-print("交互图表: 3d_interactive_plot.html")
+print("静态图表: std_price_trend.png, bushel_std_price.png, correlation_heatmap.png")
+print("交互图表: 3d_interactive_std_price.html")
 print("=" * 40)
