@@ -223,23 +223,52 @@ if 'Bushel Value' in df:
     plt.savefig('bushel_price.png', dpi=300)
     plt.close()
 
-# 交互式3D图表
+# 5.3 交互式3D图表（修复版）
 try:
+    # 确保 size 参数有效
+    size_col = 'Bushel Value' if 'Bushel Value' in df else None
+    if size_col is not None and df[size_col].isna().any():
+        # 用中位数填充缺失值
+        median_size = df[size_col].median()
+        df[size_col] = df[size_col].fillna(median_size)
+        print(f"已用中位数({median_size:.2f})填充Bushel Value缺失值")
+
     fig = px.scatter_3d(
         df,
         x='Month',
         y='Origin Group' if 'Origin Group' in df else 'Item Size',
         z='Avg Price',
         color='Item Size' if 'Item Size' in df else 'Season',
-        size='Bushel Value' if 'Bushel Value' in df else None,
+        size=size_col,
         hover_data=['City Name'] if 'City Name' in df else None,
         title="南瓜数据多维分析"
     )
+    fig.update_layout(scene=dict(
+        xaxis_title='月份',
+        yaxis_title='产地' if 'Origin Group' in df else '大小',
+        zaxis_title='平均价格(USD)'
+    ))
     fig.write_html('3d_interactive_plot.html')
     print("已保存交互式3D图：3d_interactive_plot.html")
 
 except Exception as e:
     print(f"交互式图表失败: {e}")
+    # 备选方案：不使用size参数
+    try:
+        print("尝试不带size参数的3D图表...")
+        fig = px.scatter_3d(
+            df,
+            x='Month',
+            y='Origin Group' if 'Origin Group' in df else 'Item Size',
+            z='Avg Price',
+            color='Item Size' if 'Item Size' in df else 'Season',
+            hover_data=['City Name'] if 'City Name' in df else None,
+            title="南瓜数据多维分析(无尺寸)"
+        )
+        fig.write_html('3d_interactive_plot_no_size.html')
+        print("已保存备选3D图：3d_interactive_plot_no_size.html")
+    except Exception as e2:
+        print(f"备选方案也失败: {e2}")
 
 # 相关性热力图
 print("\n正在生成相关性热力图...")
