@@ -363,3 +363,5 @@ print("分析完成！输出文件:")
 print("静态图表: std_price_trend.png, bushel_std_price.png, correlation_heatmap.png")
 print("交互图表: 3d_interactive_std_price.html")
 print("=" * 40)
+
+print(df.info())
