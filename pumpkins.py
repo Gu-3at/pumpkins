@@ -534,30 +534,33 @@ def evaluate_model(y_true, y_pred):
 metrics = evaluate_model(y_test, y_pred)
 
 # 11. 可视化预测结果 - 线性对比图
-plt.figure(figsize=(12, 8))
+def plot_price_comparison_line(y_true, y_pred, title):
+    plt.figure(figsize=(12, 8))
+    # 按索引排序以保持原始数据顺序
+    sorted_indices = np.argsort(y_true)
+    y_true_sorted = np.array(y_true)[sorted_indices]
+    y_pred_sorted = np.array(y_pred)[sorted_indices]
+    x = np.arange(len(y_true_sorted))
 
-# 按索引排序以保持原始数据顺序
-sorted_indices = np.argsort(y_test)
-y_test_sorted = np.array(y_test)[sorted_indices]
-y_pred_sorted = np.array(y_pred)[sorted_indices]
+    # 绘制实际价格和预测价格
+    plt.plot(x, y_true_sorted, 'b-', linewidth=2.5, label='实际价格', alpha=0.8)
+    plt.plot(x, y_pred_sorted, 'r--', linewidth=2, label='预测价格', alpha=0.9)
 
-# 创建索引作为x轴（样本编号）
-x = np.arange(len(y_test_sorted))
+    # 添加标题和标签
+    plt.xlabel('样本编号', fontsize=12)
+    plt.ylabel('价格', fontsize=12)
+    plt.title(title, fontsize=14)
+    plt.legend(loc='best', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.show()
 
-# 绘制实际价格和预测价格的折线图
-plt.plot(x, y_test_sorted, 'b-', linewidth=2.5, label='实际价格', alpha=0.8)
-plt.plot(x, y_pred_sorted, 'r--', linewidth=2, label='预测价格', alpha=0.9)
+# 使用训练集数据绘制对比图
+y_train_pred = final_model.predict(X_train)
+plot_price_comparison_line(y_train, y_train_pred, '训练集价格对比')
 
-# 添加标签和标题
-plt.xlabel('样本编号', fontsize=12)
-plt.ylabel('价格', fontsize=12)
-plt.title('实际价格 vs 预测价格对比', fontsize=14)
-plt.legend(loc='best', fontsize=12)
-
-# 添加网格和样式
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.tight_layout()
-plt.show()
+# 使用测试集数据绘制对比图
+plot_price_comparison_line(y_test, y_pred, '测试集价格对比')
 
 # 12. 残差分析
 residuals = y_test - y_pred
@@ -571,4 +574,3 @@ plt.title('预测残差分布', fontsize=14)
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.savefig('residuals.png', dpi=300)
 plt.show()
-
