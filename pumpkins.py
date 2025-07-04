@@ -408,7 +408,7 @@ np.random.seed(42)
 # 1. 准备特征和目标变量
 features = [
     'Variety', 'Item Size', 'Repack', 'Year',
-    'Season', 'Standard_Package', 'Bushel_Equivalent',
+    'Month', 'Standard_Package', 'Bushel_Equivalent',
     'City', 'Origin Group'
 ]
 target = 'Avg Price'
@@ -418,7 +418,7 @@ y = df[target]
 
 # 2. 识别特征类型（分类和数值）
 categorical_features = [
-    'Variety', 'Item Size', 'Season', 'City', 'Origin Group'
+    'Variety', 'Item Size', 'Month', 'City', 'Origin Group','Standard_Package'
 ]
 numerical_features = [ 'Year', 'Bushel_Equivalent']
 
@@ -533,15 +533,30 @@ def evaluate_model(y_true, y_pred):
 
 metrics = evaluate_model(y_test, y_pred)
 
-# 11. 可视化预测结果
-plt.figure(figsize=(10, 8))
-plt.scatter(y_test, y_pred, alpha=0.6, edgecolor='w', s=80)
-plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'r--', lw=2)
-plt.xlabel('实际价格', fontsize=12)
-plt.ylabel('预测价格', fontsize=12)
-plt.title('实际价格 vs 预测价格', fontsize=14)
-plt.grid(True, linestyle='--', alpha=0.7)
-plt.savefig('actual_vs_predicted.png', dpi=300)
+# 11. 可视化预测结果 - 线性对比图
+plt.figure(figsize=(12, 8))
+
+# 按索引排序以保持原始数据顺序
+sorted_indices = np.argsort(y_test)
+y_test_sorted = np.array(y_test)[sorted_indices]
+y_pred_sorted = np.array(y_pred)[sorted_indices]
+
+# 创建索引作为x轴（样本编号）
+x = np.arange(len(y_test_sorted))
+
+# 绘制实际价格和预测价格的折线图
+plt.plot(x, y_test_sorted, 'b-', linewidth=2.5, label='实际价格', alpha=0.8)
+plt.plot(x, y_pred_sorted, 'r--', linewidth=2, label='预测价格', alpha=0.9)
+
+# 添加标签和标题
+plt.xlabel('样本编号', fontsize=12)
+plt.ylabel('价格', fontsize=12)
+plt.title('实际价格 vs 预测价格对比', fontsize=14)
+plt.legend(loc='best', fontsize=12)
+
+# 添加网格和样式
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.tight_layout()
 plt.show()
 
 # 12. 残差分析
@@ -556,3 +571,4 @@ plt.title('预测残差分布', fontsize=14)
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.savefig('residuals.png', dpi=300)
 plt.show()
+
