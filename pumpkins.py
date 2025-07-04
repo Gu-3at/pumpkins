@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 from datetime import datetime
-from scipy import stats
+
 
 plt.rcParams['font.sans-serif'] = ['SimHei']
 
@@ -47,6 +47,12 @@ except Exception as e:
     exit()
 
 df_backup = df.copy()
+
+print(df.info())
+# 删除无效列
+df.drop(columns=['Type', 'Sub Variety', 'Origin District', 'Unit of Sale','Grade', 'Environment', 'Quality', 'Condition', 'Appearance',
+    'Storage', 'Crop', 'Trans Mode', 'Unnamed: 24', 'Unnamed: 25'], inplace=True)
+print(df.info())
 
 # === 2. 核心预处理 ===
 print("\n" + "=" * 40)
@@ -282,6 +288,9 @@ for col in cat_cols:
         print(f"\n{col}分布:")
         print(df[col].value_counts().head(10))
 
+print(df.info())
+df.drop(columns=['City Name', 'Date', 'Package', 'Mostly Low', 'Mostly High','Origin','Color'], inplace=True)
+df = df.dropna(subset=['Variety'])
 # === 5. 可视化分析 ===
 print("\n" + "=" * 40)
 print("数据可视化分析")
@@ -365,3 +374,203 @@ print("交互图表: 3d_interactive_std_price.html")
 print("=" * 40)
 
 print(df.info())
+'''
+# 查看所有特征的描述性统计（数值特征）
+print(df.describe())
+categorical_features = [
+    'Variety', 'Item Size', 'Repack', 'Season',
+    'Standard_Package', 'City', 'Origin Group'
+]
+# 查看分类特征的频数分布
+for col in categorical_features:
+    print(f"\n=== {col} 频数分布 ===")
+    print(df[col].value_counts(dropna=False))
+
+'''
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.inspection import permutation_importance
+import joblib
+
+
+# 设置随机种子以确保结果可复现
+np.random.seed(42)
+
+# 1. 准备特征和目标变量
+features = [
+    'Variety', 'Item Size', 'Repack', 'Year',
+    'Month', 'Standard_Package', 'Bushel_Equivalent',
+    'City', 'Origin Group'
+]
+target = 'Avg Price'
+
+X = df[features]
+y = df[target]
+
+# 2. 识别特征类型（分类和数值）
+categorical_features = [
+    'Variety', 'Item Size', 'Month', 'City', 'Origin Group','Standard_Package'
+]
+numerical_features = [ 'Year', 'Bushel_Equivalent']
+
+# 3. 检查缺失值
+print("缺失值检查：")
+print(X.isna().sum())
+
+# 4. 创建预处理管道（处理缺失值）
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())])
+
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numerical_features),
+        ('cat', categorical_transformer, categorical_features)
+    ])
+
+# 5. 划分数据集（分层抽样）
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    stratify=X[['Year']],
+    random_state=42
+)
+
+print(f"训练集大小: {len(X_train)}")
+print(f"测试集大小: {len(X_test)}")
+
+# 6. 创建带预处理和模型的全管道
+rf_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('model', RandomForestRegressor(
+        n_estimators=100,  # 减少树的数量
+        max_depth=7,  # 限制深度
+        min_samples_split=5,
+        min_samples_leaf=3,
+        random_state=42,
+        n_jobs=-1))
+])
+
+# 7. 简化超参数优化（避免网格搜索导致错误）
+params = {
+    'model__max_depth': [5, 7],
+    'model__min_samples_split': [3, 5],
+    'model__max_features': [0.5, 0.7]
+}
+
+# 使用简化搜索（不使用GridSearchCV避免复杂计算）
+best_score = -np.inf
+best_params = None
+
+for depth in params['model__max_depth']:
+    for split in params['model__min_samples_split']:
+        for features in params['model__max_features']:
+            # 设置当前参数组合
+            rf_pipeline.set_params(
+                model__max_depth=depth,
+                model__min_samples_split=split,
+                model__max_features=features
+            )
+
+            # 训练模型
+            rf_pipeline.fit(X_train, y_train)
+
+            # 评估模型
+            score = rf_pipeline.score(X_test, y_test)
+
+            # 检查是否最佳
+            if score > best_score:
+                best_score = score
+                best_params = {
+                    'max_depth': depth,
+                    'min_samples_split': split,
+                    'max_features': features
+                }
+
+# 8. 使用最佳参数训练最终模型
+print(f"\n最佳参数: {best_params}")
+final_model = rf_pipeline
+final_model.set_params(
+    model__max_depth=best_params['max_depth'],
+    model__min_samples_split=best_params['min_samples_split'],
+    model__max_features=best_params['max_features']
+)
+final_model.fit(X_train, y_train)
+
+# 9. 模型评估
+y_pred = final_model.predict(X_test)
+
+
+def evaluate_model(y_true, y_pred):
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    r2 = r2_score(y_true, y_pred)
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    within_10 = np.mean(np.abs(y_true - y_pred) < 0.1 * y_true) * 100
+
+    print("===== 模型性能 =====")
+    print(f"平均绝对误差 (MAE): {mae:.4f}")
+    print(f"均方根误差 (RMSE): {rmse:.4f}")
+    print(f"决定系数 (R²): {r2:.4f}")
+    print(f"平均绝对百分比误差 (MAPE): {mape:.2f}%")
+    print(f"预测误差 < 10%的比例: {within_10:.2f}%")
+
+    return {'MAE': mae, 'RMSE': rmse, 'R2': r2, 'MAPE': mape, 'Within_10pct': within_10}
+
+
+metrics = evaluate_model(y_test, y_pred)
+
+# 11. 可视化预测结果 - 线性对比图
+def plot_price_comparison_line(y_true, y_pred, title):
+    plt.figure(figsize=(12, 8))
+    # 按索引排序以保持原始数据顺序
+    sorted_indices = np.argsort(y_true)
+    y_true_sorted = np.array(y_true)[sorted_indices]
+    y_pred_sorted = np.array(y_pred)[sorted_indices]
+    x = np.arange(len(y_true_sorted))
+
+    # 绘制实际价格和预测价格
+    plt.plot(x, y_true_sorted, 'b-', linewidth=2.5, label='实际价格', alpha=0.8)
+    plt.plot(x, y_pred_sorted, 'r--', linewidth=2, label='预测价格', alpha=0.9)
+
+    # 添加标题和标签
+    plt.xlabel('样本编号', fontsize=12)
+    plt.ylabel('价格', fontsize=12)
+    plt.title(title, fontsize=14)
+    plt.legend(loc='best', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.show()
+
+# 使用训练集数据绘制对比图
+y_train_pred = final_model.predict(X_train)
+plot_price_comparison_line(y_train, y_train_pred, '训练集价格对比')
+
+# 使用测试集数据绘制对比图
+plot_price_comparison_line(y_test, y_pred, '测试集价格对比')
+
+# 12. 残差分析
+residuals = y_test - y_pred
+
+plt.figure(figsize=(10, 6))
+plt.scatter(y_pred, residuals, alpha=0.6, color='green')
+plt.axhline(y=0, color='r', linestyle='-', linewidth=2)
+plt.xlabel('预测价格', fontsize=12)
+plt.ylabel('残差', fontsize=12)
+plt.title('预测残差分布', fontsize=14)
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.savefig('residuals.png', dpi=300)
+plt.show()
