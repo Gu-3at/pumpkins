@@ -87,6 +87,7 @@ except Exception as e:
 # 时间特征
 df['Month'] = df['Date'].dt.month if 'Date' in df and df['Date'].dtype == 'datetime64[ns]' else df['Month']
 df['Year'] = df['Date'].dt.year if 'Date' in df and df['Date'].dtype == 'datetime64[ns]' else datetime.now().year
+df['Day'] = df['Date'].dt.day if 'Date' in df and df['Date'].dtype == 'datetime64[ns]' else np.random.randint(1, 32, len(df))  # 添加日期天数
 
 seasons = {1: 'Winter', 2: 'Winter', 3: 'Spring', 4: 'Spring', 5: 'Spring', 6: 'Summer',
            7: 'Summer', 8: 'Summer', 9: 'Fall', 10: 'Fall', 11: 'Fall', 12: 'Winter'}
@@ -408,7 +409,7 @@ np.random.seed(42)
 # 1. 准备特征和目标变量
 features = [
     'Variety', 'Item Size', 'Repack', 'Year',
-    'Month', 'Standard_Package', 'Bushel_Equivalent',
+    'Month', 'Day', 'Standard_Package', 'Bushel_Equivalent',  # 添加 Day 作为特征
     'City', 'Origin Group'
 ]
 target = 'Avg Price'
@@ -416,11 +417,19 @@ target = 'Avg Price'
 X = df[features]
 y = df[target]
 
+# 检查重复数据
+print("检查重复数据：")
+print(X.duplicated().sum())
+
+# 如果有重复数据，可以选择删除
+X = X.drop_duplicates()
+y = y.loc[X.index]  # 确保目标变量与特征对齐
+
 # 2. 识别特征类型（分类和数值）
 categorical_features = [
     'Variety', 'Item Size', 'Month', 'City', 'Origin Group','Standard_Package'
 ]
-numerical_features = [ 'Year', 'Bushel_Equivalent']
+numerical_features = [ 'Year', 'Bushel_Equivalent', 'Day']  # 添加 Day 作为数值特征
 
 # 3. 检查缺失值
 print("缺失值检查：")
@@ -513,7 +522,6 @@ final_model.fit(X_train, y_train)
 # 9. 模型评估
 y_pred = final_model.predict(X_test)
 
-
 def evaluate_model(y_true, y_pred):
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
@@ -574,3 +582,5 @@ plt.title('预测残差分布', fontsize=14)
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.savefig('residuals.png', dpi=300)
 plt.show()
+
+#算法背后告诉我们什么，随机森林是怎么决策的，他学到了什么东西。
