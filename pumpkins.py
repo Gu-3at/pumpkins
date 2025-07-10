@@ -415,7 +415,7 @@ def train_and_evaluate_model(df):
 
     # 2. 识别特征类型（分类和数值）
     categorical_features = [
-        'Variety', 'Item Size', 'Month', 'City', 'Origin Group', 'Standard_Package'
+        'Variety', 'Item Size', 'Month', 'City', 'Origin Group'
     ]
     numerical_features = ['Year', 'Bushel_Equivalent', 'Day']  # 添加 Day 作为数值特征
 
@@ -507,8 +507,73 @@ def train_and_evaluate_model(df):
     )
     final_model.fit(X_train, y_train)
 
+    # --- 新增：获取预处理后的特征名称 ---
+    # 获取数值特征名称
+    numerical_features_names = numerical_features.copy()
+
+    # 获取分类特征的One-Hot编码后的名称
+    categorical_encoder = final_model.named_steps['preprocessor'].named_transformers_['cat']
+    categorical_features_names = categorical_encoder.named_steps['onehot'].get_feature_names_out(categorical_features)
+
+    # 合并所有特征名称
+    all_feature_names = np.concatenate([numerical_features_names, categorical_features_names])
+
     # 9. 模型评估
     y_pred = final_model.predict(X_test)
+
+    # --- 新增：特征重要性分析 ---
+    def analyze_feature_importance(model_pipeline, feature_names):
+        # 获取随机森林模型
+        rf_model = model_pipeline.named_steps['model']
+        # 获取特征重要性
+        feature_importances = rf_model.feature_importances_
+
+        # 创建特征重要性 DataFrame
+        importance_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Importance': feature_importances
+        }).sort_values(by='Importance', ascending=False)
+
+        # 绘制特征重要性
+        plt.figure(figsize=(12, 8))
+        sns.barplot(x='Importance', y='Feature', data=importance_df.head(15))
+        plt.title('特征重要性排名')
+        plt.savefig('feature_importance.png', dpi=300)
+        plt.close()
+
+        return importance_df
+
+    importance_df = analyze_feature_importance(final_model, all_feature_names)
+    print(importance_df.head(15))
+
+
+
+    # --- 新增：业务价值挖掘 ---
+    def business_insights(df, model_pipeline, preprocessor):
+        # 生成价格预测报告
+        df['Predicted_Price'] = model_pipeline.predict(df[features])
+
+        # 分析月份与价格的关系
+        monthly_prices = df.groupby('Month')['Predicted_Price'].mean().reset_index()
+        plt.figure(figsize=(10, 6))
+        sns.lineplot(x='Month', y='Predicted_Price', data=monthly_prices, marker='o')
+        plt.title('预测价格的月度趋势')
+        plt.savefig('monthly_price_trend.png', dpi=300)
+        plt.close()
+
+        # 分析不同品种的价格差异
+        variety_prices = df.groupby('Variety')['Predicted_Price'].mean().reset_index()
+        plt.figure(figsize=(12, 8))
+        sns.barplot(x='Variety', y='Predicted_Price', data=variety_prices)
+        plt.title('不同品种的预测价格')
+        plt.xticks(rotation=45)
+        plt.savefig('variety_price.png', dpi=300)
+        plt.close()
+
+    # 调用函数
+    business_insights(df, final_model, preprocessor)
+
+
 
     # 10. 可视化决策树
     visualize_decision_tree(final_model, preprocessor, X.columns)
@@ -614,6 +679,7 @@ def visualize_decision_tree(pipeline, preprocessor, feature_names):
     graph.format = 'png'
     graph.render('decision_tree', view=False)  # 保存为文件而不立即打开
     print("已保存决策树可视化: decision_tree.png")
+
 def main():
     # 数据加载与预处理
     df = load_and_preprocess_data()
