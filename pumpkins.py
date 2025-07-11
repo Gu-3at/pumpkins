@@ -580,23 +580,49 @@ def train_and_evaluate_model(df):
     # 10. 可视化决策树
     visualize_decision_tree(final_model, preprocessor, X.columns)
 
-    def evaluate_model(y_true, y_pred):
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        r2 = r2_score(y_true, y_pred)
-        mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
-        within_10 = np.mean(np.abs(y_true - y_pred) < 0.1 * y_true) * 100
+    def evaluate_model(y_train, y_train_pred, y_test, y_test_pred):
+        # 计算训练集的性能指标
+        train_mae = mean_absolute_error(y_train, y_train_pred)
+        train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+        train_r2 = r2_score(y_train, y_train_pred)
+        train_mape = np.mean(np.abs((y_train - y_train_pred) / y_train)) * 100
+        train_within_10 = np.mean(np.abs(y_train - y_train_pred) < 0.1 * y_train) * 100
 
-        print("===== 模型性能 =====")
-        print(f"平均绝对误差 (MAE): {mae:.4f}")
-        print(f"均方根误差 (RMSE): {rmse:.4f}")
-        print(f"决定系数 (R²): {r2:.4f}")
-        print(f"平均绝对百分比误差 (MAPE): {mape:.2f}%")
-        print(f"预测误差 < 10%的比例: {within_10:.2f}%")
+        # 计算测试集的性能指标
+        test_mae = mean_absolute_error(y_test, y_test_pred)
+        test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+        test_r2 = r2_score(y_test, y_test_pred)
+        test_mape = np.mean(np.abs((y_test - y_test_pred) / y_test)) * 100
+        test_within_10 = np.mean(np.abs(y_test - y_test_pred) < 0.1 * y_test) * 100
 
-        return {'MAE': mae, 'RMSE': rmse, 'R2': r2, 'MAPE': mape, 'Within_10pct': within_10}
+        # 打印训练集的性能
+        print("===== 训练集模型性能 =====")
+        print(f"平均绝对误差 (MAE): {train_mae:.4f}")
+        print(f"均方根误差 (RMSE): {train_rmse:.4f}")
+        print(f"决定系数 (R²): {train_r2:.4f}")
+        print(f"平均绝对百分比误差 (MAPE): {train_mape:.2f}%")
+        print(f"预测误差 < 10%的比例: {train_within_10:.2f}%")
 
-    metrics = evaluate_model(y_test, y_pred)
+        # 打印测试集的性能
+        print("\n===== 测试集模型性能 =====")
+        print(f"平均绝对误差 (MAE): {test_mae:.4f}")
+        print(f"均方根误差 (RMSE): {test_rmse:.4f}")
+        print(f"决定系数 (R²): {test_r2:.4f}")
+        print(f"平均绝对百分比误差 (MAPE): {test_mape:.2f}%")
+        print(f"预测误差 < 10%的比例: {test_within_10:.2f}%")
+
+        # 返回训练集和测试集的性能指标
+        return {
+            'train': {'MAE': train_mae, 'RMSE': train_rmse, 'R2': train_r2, 'MAPE': train_mape,
+                      'Within_10pct': train_within_10},
+            'test': {'MAE': test_mae, 'RMSE': test_rmse, 'R2': test_r2, 'MAPE': test_mape,
+                     'Within_10pct': test_within_10}
+        }
+
+    # 在主函数中调用 evaluate_model
+    y_train_pred = final_model.predict(X_train)
+    y_test_pred = final_model.predict(X_test)
+    metrics = evaluate_model(y_train, y_train_pred, y_test, y_test_pred)
 
     # 11. 可视化预测结果 - 线性对比图
     def plot_price_comparison_line(y_true, y_pred, title):
