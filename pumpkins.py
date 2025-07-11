@@ -5,16 +5,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 from datetime import datetime
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-import joblib
 from sklearn import tree
 import graphviz
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
 
 
 def load_and_preprocess_data():
@@ -507,6 +506,13 @@ def train_and_evaluate_model(df):
     )
     final_model.fit(X_train, y_train)
 
+    # --- 新增：交叉验证 ---
+    print("\n交叉验证：")
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    cv_scores = cross_val_score(final_model, X, y, cv=kf, scoring='r2')
+    print(f"交叉验证 R² 分数：{cv_scores}")
+    print(f"平均交叉验证 R² 分数：{cv_scores.mean():.4f}")
+
     # --- 新增：获取预处理后的特征名称 ---
     # 获取数值特征名称
     numerical_features_names = numerical_features.copy()
@@ -546,8 +552,6 @@ def train_and_evaluate_model(df):
     importance_df = analyze_feature_importance(final_model, all_feature_names)
     print(importance_df.head(15))
 
-
-
     # --- 新增：业务价值挖掘 ---
     def business_insights(df, model_pipeline, preprocessor):
         # 生成价格预测报告
@@ -573,10 +577,9 @@ def train_and_evaluate_model(df):
     # 调用函数
     business_insights(df, final_model, preprocessor)
 
-
-
     # 10. 可视化决策树
     visualize_decision_tree(final_model, preprocessor, X.columns)
+
     def evaluate_model(y_true, y_pred):
         mae = mean_absolute_error(y_true, y_pred)
         rmse = np.sqrt(mean_squared_error(y_true, y_pred))
@@ -627,6 +630,25 @@ def train_and_evaluate_model(df):
     # 12. 残差分析
     residuals = y_test - y_pred
 
+    # 将 residuals 转换为 Pandas Series，确保索引一致
+    residuals = pd.Series(residuals, index=y_test.index)
+
+    # 找出残差绝对值最大的前10个样本
+    large_residuals_indices = np.argsort(np.abs(residuals))[-5:]
+
+    print("\n残差较大的样本分析：")
+    for idx in large_residuals_indices:
+        # 获取原始索引
+        original_index = X_test.index[idx]
+
+        # 打印信息
+        print(f"样本索引: {original_index}")
+        print(f"真实值: {y_test.loc[original_index]:.2f}")
+        print(f"预测值: {y_pred[idx]:.2f}")
+        print(f"残差: {residuals.loc[original_index]:.2f}")
+        print(f"特征值: {X_test.loc[original_index]}")
+        print("-" * 50)
+
     plt.figure(figsize=(10, 6))
     plt.scatter(y_pred, residuals, alpha=0.6, color='green')
     plt.axhline(y=0, color='r', linestyle='-', linewidth=2)
@@ -671,7 +693,6 @@ def visualize_decision_tree(pipeline, preprocessor, feature_names):
         rounded=True,  # 圆角节点
         special_characters=True,  # 处理特殊字符
         proportion=True,  # 显示比例而非计数
-
     )
 
     # 生成并保存图像
