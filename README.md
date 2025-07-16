@@ -60,17 +60,18 @@
 
 ## 文件说明
 
-| 文件                       | 类型 | 描述 |
-|--------------------------| --------- | -------- |
-| US-pumpkins.csv          | 数据         |   原始数据集       |
-| pumpkins.py              | 代码           | 主分析程序           |
-| std_price_trend.png      |图像            |月度价格趋势           |
-| bushel_std_price.png     |图像            |包装价格关系           |
-| correlation_heatmap.png  |图像              | 特征相关性           |
+| 文件                            | 类型 | 描述 |
+|-------------------------------| --------- | -------- |
+| US-pumpkins.csv               | 数据         |   原始数据集       |
+| pumpkins.py                   | 代码           | 主分析程序           |
+| std_price_trend.png           |图像            |月度价格趋势           |
+| bushel_std_price.png          |图像            |包装价格关系           |
+| correlation_heatmap.png       |图像              | 特征相关性           |
 | 3d_interactive_std_price.html |  交互   |  3D分析图          |
-| 训练集价格对比.png |  图像      |  训练集预测对比        |
-| 测试集价格对比.png    |  图像        |  测试集预测对比               |
-| 预测残差分布.png           | 图像         |   残差分析图              |
+| 训练集价格对比2.0.png                |  图像      |  训练集预测对比        |
+| 测试集价格对比2.0.png                |  图像        |  测试集预测对比               |
+| 预测残差分布2.0.png                 | 图像         |   残差分析图              |
+|                               |            |                      |
 		
 ## 关键发现
 
